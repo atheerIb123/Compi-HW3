@@ -1,0 +1,105 @@
+%{
+    #include "hw3_output.hpp"
+    #include <iostream>
+    #include "Semantics.hpp"
+    using namespace std;
+
+    extern int yylex();
+    extern int yylineno;
+    int yyerror(const char* message);
+%}
+
+/* Tokens section */
+
+/* Add all the reserved keywords that have no left or right association */
+%nonassoc VOID;
+%nonassoc INT;
+%nonassoc BYTE;
+%nonassoc B;
+%nonassoc BOOL;
+%nonassoc TRUE;
+%nonassoc FALSE;
+%nonassoc RETURN;
+%nonassoc IF;
+%nonassoc ELSE;
+%nonassoc WHILE;
+%nonassoc BREAK;
+%nonassoc CONTINUE;
+%nonassoc SC;
+%nonassoc COMMA;
+%nonassoc ID;
+%nonassoc NUM;
+%nonassoc STRING;
+%right ASSIGN;
+%left OR;
+%left AND;
+%left EQ_RELOP;
+%nonassoc RELOP;
+%left ADD_BINOP;
+%left BINOP;
+%right NOT;
+%left RBRACE;
+%left LBRACE;
+%left RPAREN;
+%left LPAREN;
+
+%%
+
+/* Rules section */
+
+Program:    {$$ = new Program(); } OpenScope AddFuncs Statements CloseScope                                                              
+Statements: Statement                                                       {  $$ = new Statements(dynamic_cast<Statement*>($1)); }
+    | Statements Statement                                                  { $$ = new Statements(dynamic_cast<Statements*>($1), dynamic_cast<Statement*>($2)); }
+Statement: LBRACE OpenScope Statements CloseScope RBRACE                    {  $$ = new Statement(dynamic_cast<Statements*>($3)); }
+    | Type ID SC                                                            { $$ = new Statement(dynamic_cast<Type*>($1), $2); }
+    | Type ID ASSIGN Exp SC                                                 { $$ = new Statement(dynamic_cast<Type*>($1), $2, dynamic_cast<Exp*>($4)); }
+    | ID ASSIGN Exp SC                                                      {  $$ = new Statement($1, dynamic_cast<Exp*>($3)); }
+    | Call SC                                                               {  $$ = new Statement(dynamic_cast<Call*>($1)); }
+    | RETURN SC                                                             { $$ = new Statement(); }
+    | RETURN Exp SC                                                         {$$ = new Statement(dynamic_cast<Exp*>($2)); }
+    | IF LPAREN ExpIf RPAREN OpenScope Statement %prec IF                   {  $$ = new Statement(dynamic_cast<Exp*>($3), dynamic_cast<Statement*>($6)); closeScope(); }
+    | IF LPAREN ExpIf RPAREN OpenScope Statement ELSE {closeScope(); } OpenScope Statement CloseScope                         {  $$ = new Statement(dynamic_cast<Exp*>($3), dynamic_cast<Statement*>($6), dynamic_cast<Statement*>($8)); }
+    | WHILE LPAREN ExpIf RPAREN OpenScope { enterLoop(); } Statement { exitLoop(); } CloseScope                                     {  $$ = new Statement(dynamic_cast<Exp*>($3), dynamic_cast<Statement*>($7)); }
+    | BREAK SC                                                              { $$ = new Statement($1); }
+    | CONTINUE SC                                                           {  $$ = new Statement($1); }
+Call: ID LPAREN Exp RPAREN                                              {$$ = new Call($1, dynamic_cast<Exp*>($3)); }
+Type: INT                                                                   {$$ = new Type($1); }
+    | BYTE                                                                  { $$ = new Type($1); }
+    | BOOL                                                                  { $$ = new Type($1); }
+Exp: LPAREN Exp RPAREN                                                      {  $$ = new Exp(dynamic_cast<Exp*>($2)); }
+    | Exp ADD_BINOP Exp                                                     { $$ = new Exp(dynamic_cast<Exp*>($1), $2, dynamic_cast<Exp*>($3), false); }
+    | Exp BINOP Exp                                                         {  $$ = new Exp(dynamic_cast<Exp*>($1), $2, dynamic_cast<Exp*>($3), false); }
+    | ID                                                                    {  $$ = new Exp($1); }
+    | Call                                                                  { $$ = new Exp(dynamic_cast<Call*>($1)); }
+    | NUM                                                                   {$$ = new Exp($1, "NUM"); }
+    | NUM B                                                                 { $$ = new Exp($1, "NUM B"); }
+    | STRING                                                                {  $$ = new Exp($1, "STRING"); }
+    | TRUE                                                                  {  $$ = new Exp($1, "BOOL"); }
+    | FALSE                                                                 { $$ = new Exp($1, "BOOL"); }
+    | NOT Exp                                                               {  $$ = new Exp($1, dynamic_cast<Exp*>($2)); }
+    | Exp AND Exp                                                           {  $$ = new Exp(dynamic_cast<Exp*>($1), $2, dynamic_cast<Exp*>($3), false); }
+    | Exp OR Exp                                                            {$$ = new Exp(dynamic_cast<Exp*>($1), $2, dynamic_cast<Exp*>($3), false); }
+    | Exp EQ_RELOP Exp                                                      { $$ = new Exp(dynamic_cast<Exp*>($1), $2, dynamic_cast<Exp*>($3), true); }
+    | Exp RELOP Exp                                                         {$$ = new Exp(dynamic_cast<Exp*>($1), $2, dynamic_cast<Exp*>($3), true); }
+    | LPAREN Type RPAREN Exp                                                { $$ = new Exp(dynamic_cast<Type*>($2), dynamic_cast<Exp*>($4)); }
+    | Exp IF LPAREN Exp RPAREN ELSE Exp                                     {$$ = new Exp(dynamic_cast<Exp*>($1), dynamic_cast<Exp*>($4), dynamic_cast<Exp*>($7)); }
+
+ExpIf: Exp { validateIfExpression(dynamic_cast<Exp*>($1)); $$ = $1;}
+
+OpenScope: { openScope(); }
+CloseScope: { closeScope(); }
+AddFuncs: { addGlobalFunctions(); }
+%%
+
+/* Functions section */
+
+int main()
+{
+    return yyparse();
+}
+
+int yyerror(const char* message)
+{
+    output::errorSyn(yylineno);
+    exit(0);
+}
